@@ -232,7 +232,8 @@ const SideBySideRowComponent: React.FC<RowProps> = memo(({
     if (wordWrap) return;
     const horizontal = Math.abs(e.deltaX) > 0 ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
     if (!horizontal) return;
-    e.preventDefault();
+    // React's wheel listener can be passive in Chromium. Avoid preventDefault
+    // here to prevent warning spam and let vertical scrolling continue naturally.
     onHorizontalScrollDelta(horizontal);
   }, [wordWrap, onHorizontalScrollDelta]);
 

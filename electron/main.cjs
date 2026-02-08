@@ -2,10 +2,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { execFile } = require('node:child_process');
-const initialRepoPath = process.env.DIFFY_REPO_PATH || null;
-const initialBaseRef = process.env.DIFFY_BASE_REF || null;
-const initialHeadRef = process.env.DIFFY_HEAD_REF || null;
+const fallbackInitialLaunch = {
+  repoPath: process.env.DIFFY_REPO_PATH || null,
+  baseRef: process.env.DIFFY_BASE_REF || null,
+  headRef: process.env.DIFFY_HEAD_REF || null,
+};
 const initialLogPath = path.join(process.cwd(), 'diffy-desktop.log');
+const initialLaunch = fallbackInitialLaunch;
 
 let logPath = initialLogPath;
 
@@ -18,7 +21,7 @@ function log(level, message, meta) {
       message,
       ...(meta ? { meta } : {}),
     });
-    fs.appendFileSync(logPath, `${line}\n`, 'utf8');
+    fs.appendFile(logPath, `${line}\n`, 'utf8', () => {});
   } catch {
     // Avoid crashing if logging itself fails.
   }
@@ -46,12 +49,20 @@ function writePrefs(next) {
   }
 }
 
-function createWindow() {
+function getWindowBackgroundColor() {
+  const theme = readPrefs().theme;
+  if (theme === 'light' || theme === 'sand') return '#ffffff';
+  return '#1a1b26';
+}
+
+function createWindow(launchContext = fallbackInitialLaunch) {
   const mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 960,
     minHeight: 640,
+    show: false,
+    backgroundColor: getWindowBackgroundColor(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -65,6 +76,9 @@ function createWindow() {
   });
   mainWindow.webContents.on('did-finish-load', () => {
     log('info', 'Renderer finished loading', { windowId: mainWindow.id });
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
   });
   mainWindow.webContents.on('did-fail-load', (_event, code, desc, url, isMainFrame) => {
     log('error', 'Renderer failed loading', {
@@ -79,6 +93,10 @@ function createWindow() {
     log('error', 'Renderer process gone', { windowId: mainWindow.id, details });
   });
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (typeof message === 'string') {
+      if (message.includes('Unable to preventDefault inside passive event listener invocation.')) return;
+      if (message.includes('Electron Security Warning')) return;
+    }
     log('renderer', 'Console message', { windowId: mainWindow.id, level, message, line, sourceId });
   });
 
@@ -143,15 +161,15 @@ ipcMain.handle('repo:diff', async (_event, repoPath, baseRef, headRef) => {
   return buildRepoDiff(repoPath, baseRef, headRef);
 });
 
-ipcMain.handle('repo:initial', async () => {
-  if (!initialRepoPath) return null;
+ipcMain.handle('repo:initial', async (event) => {
+  if (!initialLaunch?.repoPath) return null;
   try {
-    await runGit(['rev-parse', '--is-inside-work-tree'], initialRepoPath);
-    const repoRoot = (await runGit(['rev-parse', '--show-toplevel'], initialRepoPath)).trim();
+    await runGit(['rev-parse', '--is-inside-work-tree'], initialLaunch.repoPath);
+    const repoRoot = (await runGit(['rev-parse', '--show-toplevel'], initialLaunch.repoPath)).trim();
     return {
       repoPath: repoRoot || null,
-      baseRef: initialBaseRef,
-      headRef: initialHeadRef,
+      baseRef: initialLaunch.baseRef,
+      headRef: initialLaunch.headRef,
     };
   } catch {
     return null;
@@ -186,12 +204,12 @@ process.on('unhandledRejection', reason => {
 app.whenReady().then(() => {
   logPath = path.join(app.getPath('userData'), 'diffy-desktop.log');
   log('info', 'App ready', {
-    initialRepoPath,
-    initialBaseRef,
-    initialHeadRef,
+    initialRepoPath: initialLaunch.repoPath,
+    initialBaseRef: initialLaunch.baseRef,
+    initialHeadRef: initialLaunch.headRef,
     logPath,
   });
-  createWindow();
+  createWindow(initialLaunch);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
