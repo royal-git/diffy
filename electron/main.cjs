@@ -1,16 +1,39 @@
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage } = require('electron');
 const { execFile } = require('node:child_process');
+function parseLaunchArgs(argv) {
+  const parsed = {
+    repoPath: null,
+    baseRef: null,
+    headRef: null,
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--repo' && i + 1 < argv.length) {
+      parsed.repoPath = argv[++i] || null;
+    } else if (arg === '--base' && i + 1 < argv.length) {
+      parsed.baseRef = argv[++i] || null;
+    } else if (arg === '--head' && i + 1 < argv.length) {
+      parsed.headRef = argv[++i] || null;
+    }
+  }
+  return parsed;
+}
+
+const launchFromArgs = parseLaunchArgs(process.argv);
 const fallbackInitialLaunch = {
-  repoPath: process.env.DIFFY_REPO_PATH || null,
-  baseRef: process.env.DIFFY_BASE_REF || null,
-  headRef: process.env.DIFFY_HEAD_REF || null,
+  repoPath: launchFromArgs.repoPath || process.env.DIFFY_REPO_PATH || null,
+  baseRef: launchFromArgs.baseRef || process.env.DIFFY_BASE_REF || null,
+  headRef: launchFromArgs.headRef || process.env.DIFFY_HEAD_REF || null,
 };
 const initialLogPath = path.join(process.cwd(), 'diffy-desktop.log');
 const initialLaunch = fallbackInitialLaunch;
 
 let logPath = initialLogPath;
+
+// Set app identity as early as possible for macOS menu/dock labeling.
+app.setName('Diffy');
 
 function log(level, message, meta) {
   try {
@@ -55,7 +78,91 @@ function getWindowBackgroundColor() {
   return '#1a1b26';
 }
 
+function createAppIcon() {
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">',
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
+    '<stop offset="0%" stop-color="#7aa2f7"/><stop offset="100%" stop-color="#bb9af7"/>',
+    '</linearGradient></defs>',
+    '<rect x="20" y="20" width="216" height="216" rx="52" fill="#1f2029"/>',
+    '<rect x="20" y="20" width="216" height="216" rx="52" fill="none" stroke="url(#g)" stroke-width="10"/>',
+    '<path d="M74 90h108M74 128h80M74 166h52" stroke="#c0caf5" stroke-width="14" stroke-linecap="round"/>',
+    '<circle cx="192" cy="166" r="18" fill="#9ece6a"/>',
+    '</svg>',
+  ].join('');
+  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+}
+
+function installApplicationMenu() {
+  const template = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Reload Diff',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+            if (win && !win.isDestroyed()) win.webContents.reloadIgnoringCache();
+          },
+        },
+        { type: 'separator' },
+        { role: 'close' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { role: 'front' },
+      ],
+    },
+  ];
+
+  if (process.env.NODE_ENV !== 'production') {
+    template[3].submenu.splice(0, 0, { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' });
+  }
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow(launchContext = fallbackInitialLaunch) {
+  const appIcon = createAppIcon();
   const mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -63,6 +170,8 @@ function createWindow(launchContext = fallbackInitialLaunch) {
     minHeight: 640,
     show: false,
     backgroundColor: getWindowBackgroundColor(),
+    icon: appIcon,
+    autoHideMenuBar: process.platform !== 'darwin',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -400,6 +509,14 @@ process.on('unhandledRejection', reason => {
 });
 
 app.whenReady().then(() => {
+  const appIcon = createAppIcon();
+  app.setAboutPanelOptions({
+    applicationName: 'Diffy',
+  });
+  if (process.platform === 'darwin' && app.dock && !appIcon.isEmpty()) {
+    app.dock.setIcon(appIcon);
+  }
+  installApplicationMenu();
   logPath = path.join(app.getPath('userData'), 'diffy-desktop.log');
   log('info', 'App ready', {
     initialRepoPath: initialLaunch.repoPath,

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 const path = require('node:path');
+const os = require('node:os');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { execFileSync } = require('node:child_process');
 
 const projectRoot = path.resolve(__dirname, '..');
 const electronMain = path.join(projectRoot, 'electron', 'main.cjs');
-const electronBinary = require('electron');
 const args = process.argv.slice(2);
 
 let baseRef = null;
@@ -19,6 +20,10 @@ for (let i = 0; i < args.length; i++) {
     process.stdout.write(
       [
         'Usage: diffy [options]',
+        '',
+        'Launch behavior:',
+        '  Opens installed Diffy.app when available (production path).',
+        '  Falls back to local Electron runtime in a dev checkout.',
         '',
         'Options:',
         '  -h, --help              Show help',
@@ -77,6 +82,71 @@ function log(message) {
 function fail(message) {
   process.stderr.write(`[diffy] error: ${message}\n`);
   process.exit(1);
+}
+
+function resolvePackagedAppPath() {
+  const candidates = [
+    '/Applications/Diffy.app',
+    path.join(os.homedir(), 'Applications', 'Diffy.app'),
+  ];
+
+  // Local build output fallback for developers.
+  const distDir = path.join(projectRoot, 'dist');
+  if (fs.existsSync(distDir) && fs.statSync(distDir).isDirectory()) {
+    for (const entry of fs.readdirSync(distDir)) {
+      if (entry.endsWith('.app')) candidates.push(path.join(distDir, entry));
+    }
+    for (const entry of fs.readdirSync(distDir)) {
+      const nested = path.join(distDir, entry, 'Diffy.app');
+      if (fs.existsSync(nested)) candidates.push(nested);
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function launchPackagedApp({ repoPath, baseRefValue, headRefValue }) {
+  const appPath = resolvePackagedAppPath();
+  if (!appPath) return false;
+
+  const appArgs = ['-n', '-a', appPath, '--args', '--repo', repoPath];
+  if (baseRefValue) appArgs.push('--base', baseRefValue);
+  if (headRefValue) appArgs.push('--head', headRefValue);
+
+  const child = spawn('open', appArgs, {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+  return true;
+}
+
+function launchDevElectron({ repoPath, baseRefValue, headRefValue }) {
+  let electronBinary;
+  try {
+    electronBinary = require('electron');
+  } catch {
+    fail(
+      "Could not find installed Diffy.app and Electron runtime is unavailable.\n" +
+      "Install/open Diffy.app first (or run in repo with dependencies installed)."
+    );
+  }
+
+  const child = spawn(electronBinary, [electronMain], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      DIFFY_REPO_PATH: repoPath,
+      DIFFY_BASE_REF: baseRefValue || '',
+      DIFFY_HEAD_REF: headRefValue || '',
+    },
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
 }
 
 function verifyInsideGitRepo(cwd) {
@@ -208,16 +278,6 @@ if (baseRef && headRef) {
   log('Opening working-tree diff (HEAD vs local tracked + untracked changes)');
 }
 
-const child = spawn(electronBinary, [electronMain], {
-  cwd: projectRoot,
-  env: {
-    ...process.env,
-    DIFFY_REPO_PATH: process.cwd(),
-    DIFFY_BASE_REF: baseRef || '',
-    DIFFY_HEAD_REF: headRef || '',
-  },
-  detached: true,
-  stdio: 'ignore',
-});
-
-child.unref();
+if (!launchPackagedApp({ repoPath: process.cwd(), baseRefValue: baseRef, headRefValue: headRef })) {
+  launchDevElectron({ repoPath: process.cwd(), baseRefValue: baseRef, headRefValue: headRef });
+}

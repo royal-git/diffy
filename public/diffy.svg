@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Diffy icon option 2">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="20%" r="90%">
+      <stop offset="0%" stop-color="#1b2550"/>
+      <stop offset="60%" stop-color="#111936"/>
+      <stop offset="100%" stop-color="#0a1125"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#89d4ff"/>
+      <stop offset="100%" stop-color="#b38cff"/>
+    </linearGradient>
+    <linearGradient id="pane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#254175"/>
+      <stop offset="100%" stop-color="#142445"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#56c7ff" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect x="80" y="80" width="864" height="864" rx="210" fill="url(#bg)"/>
+  <rect x="80" y="80" width="864" height="864" rx="210" fill="none" stroke="url(#rim)" stroke-opacity="0.7" stroke-width="12"/>
+
+  <g filter="url(#glow)">
+    <rect x="140" y="220" width="305" height="584" rx="62" fill="url(#pane)" stroke="#6bcfff" stroke-width="8"/>
+    <rect x="579" y="220" width="305" height="584" rx="62" fill="url(#pane)" stroke="#89d4ff" stroke-width="8"/>
+  </g>
+
+  <circle cx="196" cy="282" r="13" fill="#93c5fd"/>
+  <circle cx="236" cy="282" r="13" fill="#bfdbfe"/>
+  <circle cx="635" cy="282" r="13" fill="#93c5fd"/>
+  <circle cx="675" cy="282" r="13" fill="#bfdbfe"/>
+
+  <rect x="184" y="336" width="210" height="18" rx="9" fill="#8ca7cf"/>
+  <rect x="184" y="390" width="132" height="18" rx="9" fill="#fca5a5"/>
+  <rect x="184" y="444" width="160" height="18" rx="9" fill="#22d3ee"/>
+  <rect x="184" y="498" width="118" height="18" rx="9" fill="#8099bf"/>
+  <rect x="184" y="552" width="144" height="18" rx="9" fill="#8099bf"/>
+
+  <rect x="623" y="336" width="210" height="18" rx="9" fill="#8ca7cf"/>
+  <rect x="623" y="390" width="124" height="18" rx="9" fill="#4ade80"/>
+  <rect x="623" y="444" width="168" height="18" rx="9" fill="#60a5fa"/>
+  <rect x="623" y="498" width="136" height="18" rx="9" fill="#8099bf"/>
+  <rect x="623" y="552" width="112" height="18" rx="9" fill="#8099bf"/>
+
+  <path d="M472 426 L552 512 L472 598" fill="none" stroke="#5eead4" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

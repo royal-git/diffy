@@ -12,7 +12,7 @@ Open from any repo with one command and review changes in a side-by-side UI.
 ### Run without install
 
 ```bash
-npx github:<owner>/<repo> --help
+npx github:royal-git/diffy --help
 ```
 
 ## Highlights
@@ -36,7 +36,7 @@ npx github:<owner>/<repo> --help
 ### Global install (recommended)
 
 ```bash
-npm i -g github:<owner>/<repo>
+npm i -g github:royal-git/diffy
 diffy --help
 ```
 
@@ -44,7 +44,7 @@ diffy --help
 ### Dev mode (clone + link)
 
 ```bash
-git clone https://github.com/<owner>/<repo>.git
+git clone https://github.com/royal-git/diffy.git
 cd diffy
 npm install
 npm link
