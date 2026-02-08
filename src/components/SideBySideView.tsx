@@ -15,6 +15,7 @@ interface Props {
   onChunkDecision: (chunkId: string, decision: ChunkDecision) => void;
   focusedChunkIndex: number;
   searchQuery: string;
+  activeSearchIndex: number;
   wordWrap: boolean;
 }
 
@@ -27,12 +28,15 @@ export const SideBySideView: React.FC<Props> = memo(({
   onChunkDecision,
   focusedChunkIndex,
   searchQuery,
+  activeSearchIndex,
   wordWrap,
 }) => {
   const rows = useMemo(
     () => buildSideBySideRows(chunks, contextLines, expandedRegions),
     [chunks, contextLines, expandedRegions]
   );
+  const useVirtualization = !wordWrap;
+  const [horizontalScroll, setHorizontalScroll] = React.useState(0);
 
   const { visibleRange, totalHeight, offsetY, containerRef, scrollTo } = useVirtualScroll(
     rows.length,
@@ -54,36 +58,116 @@ export const SideBySideView: React.FC<Props> = memo(({
 
   // Scroll to focused chunk
   React.useEffect(() => {
-    if (focusedChunkIndex >= 0 && focusedChunkIndex < chunkStartRows.length) {
+    if (useVirtualization && focusedChunkIndex >= 0 && focusedChunkIndex < chunkStartRows.length) {
       scrollTo(chunkStartRows[focusedChunkIndex]);
     }
-  }, [focusedChunkIndex, chunkStartRows, scrollTo]);
+  }, [focusedChunkIndex, chunkStartRows, scrollTo, useVirtualization]);
 
-  const visibleRows = rows.slice(visibleRange.start, visibleRange.end);
+  const start = useVirtualization ? visibleRange.start : 0;
+  const end = useVirtualization ? visibleRange.end : rows.length;
+  const visibleRows = rows.slice(start, end);
+  const leftScrollWidth = useMemo(() => {
+    let maxLen = 0;
+    for (const row of rows) {
+      const len = row.left?.content?.length ?? 0;
+      if (len > maxLen) maxLen = len;
+    }
+    return Math.max(240, maxLen * 8 + 120);
+  }, [rows]);
+  const rightScrollWidth = useMemo(() => {
+    let maxLen = 0;
+    for (const row of rows) {
+      const len = row.right?.content?.length ?? 0;
+      if (len > maxLen) maxLen = len;
+    }
+    return Math.max(240, maxLen * 8 + 120);
+  }, [rows]);
+  const maxHorizontalScroll = Math.max(0, leftScrollWidth, rightScrollWidth);
+  React.useEffect(() => {
+    setHorizontalScroll(prev => Math.min(prev, maxHorizontalScroll));
+  }, [maxHorizontalScroll]);
+  const applyHorizontalScroll = useCallback((delta: number) => {
+    setHorizontalScroll(prev => Math.max(0, Math.min(maxHorizontalScroll, prev + delta)));
+  }, [maxHorizontalScroll]);
+  const searchMatchRows = useMemo(() => {
+    if (!searchQuery) return [];
+    const q = searchQuery.toLowerCase();
+    const rowsWithCounts: Array<{ rowIndex: number; count: number }> = [];
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
+      let count = 0;
+      if (row.left && row.left.content.toLowerCase().includes(q)) count++;
+      if (row.right && row.right !== row.left && row.right.content.toLowerCase().includes(q)) count++;
+      if (count > 0) rowsWithCounts.push({ rowIndex, count });
+    }
+    return rowsWithCounts;
+  }, [rows, searchQuery]);
+  const activeSearchRowIndex = useMemo(() => {
+    if (!searchQuery || searchMatchRows.length === 0) return -1;
+    const total = searchMatchRows.reduce((sum, m) => sum + m.count, 0);
+    let target = ((activeSearchIndex % total) + total) % total;
+    for (const match of searchMatchRows) {
+      if (target < match.count) return match.rowIndex;
+      target -= match.count;
+    }
+    return searchMatchRows[0].rowIndex;
+  }, [searchQuery, searchMatchRows, activeSearchIndex]);
+
+  React.useEffect(() => {
+    if (!searchQuery || searchMatchRows.length === 0 || !useVirtualization) return;
+    if (activeSearchRowIndex >= 0) scrollTo(activeSearchRowIndex);
+  }, [searchQuery, searchMatchRows, activeSearchRowIndex, useVirtualization, scrollTo]);
 
   return (
-    <div
-      ref={containerRef}
-      className="diff-scroll-container"
-      style={{ overflow: 'auto', height: '100%', position: 'relative' }}
-    >
-      <div style={{ height: totalHeight, position: 'relative' }}>
-        <div style={{ transform: `translateY(${offsetY}px)` }}>
-          {visibleRows.map((row, i) => (
-            <SideBySideRowComponent
-              key={visibleRange.start + i}
-              row={row}
-              rowIndex={visibleRange.start + i}
-              decision={chunkDecisions[row.chunkId] || 'pending'}
-              onDecision={onChunkDecision}
-              onExpandRegion={onExpandRegion}
-              searchQuery={searchQuery}
-              wordWrap={wordWrap}
-              isFocusedChunk={chunkStartRows[focusedChunkIndex] !== undefined &&
-                row.chunkId === rows[chunkStartRows[focusedChunkIndex]]?.chunkId}
-            />
-          ))}
-        </div>
+    <div className="side-by-side-shell">
+      <div
+        ref={containerRef}
+        className="diff-scroll-container"
+        style={{ overflow: 'auto', height: '100%', position: 'relative' }}
+      >
+        {useVirtualization ? (
+          <div style={{ height: totalHeight, position: 'relative' }}>
+            <div style={{ transform: `translateY(${offsetY}px)` }}>
+              {visibleRows.map((row, i) => (
+                <SideBySideRowComponent
+                  key={start + i}
+                  row={row}
+                  rowIndex={start + i}
+                  decision={chunkDecisions[row.chunkId] || 'pending'}
+                  onDecision={onChunkDecision}
+                  onExpandRegion={onExpandRegion}
+                  searchQuery={searchQuery}
+                  wordWrap={wordWrap}
+                  horizontalScroll={horizontalScroll}
+                  onHorizontalScrollDelta={applyHorizontalScroll}
+                  isActiveSearchRow={start + i === activeSearchRowIndex}
+                  isFocusedChunk={chunkStartRows[focusedChunkIndex] !== undefined &&
+                    row.chunkId === rows[chunkStartRows[focusedChunkIndex]]?.chunkId}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+            {visibleRows.map((row, i) => (
+              <SideBySideRowComponent
+                key={start + i}
+                row={row}
+                rowIndex={start + i}
+                decision={chunkDecisions[row.chunkId] || 'pending'}
+                onDecision={onChunkDecision}
+                onExpandRegion={onExpandRegion}
+                searchQuery={searchQuery}
+                wordWrap={wordWrap}
+                horizontalScroll={horizontalScroll}
+                onHorizontalScrollDelta={applyHorizontalScroll}
+                isActiveSearchRow={start + i === activeSearchRowIndex}
+                isFocusedChunk={chunkStartRows[focusedChunkIndex] !== undefined &&
+                  row.chunkId === rows[chunkStartRows[focusedChunkIndex]]?.chunkId}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -101,6 +185,9 @@ interface RowProps {
   onExpandRegion: (regionKey: string) => void;
   searchQuery: string;
   wordWrap: boolean;
+  horizontalScroll: number;
+  onHorizontalScrollDelta: (delta: number) => void;
+  isActiveSearchRow: boolean;
   isFocusedChunk: boolean;
 }
 
@@ -111,6 +198,9 @@ const SideBySideRowComponent: React.FC<RowProps> = memo(({
   onExpandRegion,
   searchQuery,
   wordWrap,
+  horizontalScroll,
+  onHorizontalScrollDelta,
+  isActiveSearchRow,
   isFocusedChunk,
 }) => {
   const handleAccept = useCallback(() => {
@@ -138,11 +228,19 @@ const SideBySideRowComponent: React.FC<RowProps> = memo(({
   const leftType = row.left?.type || 'empty';
   const rightType = row.right?.type || 'empty';
   const showGutter = row.isFirstInChunk && (leftType !== 'unchanged' || rightType !== 'unchanged');
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (wordWrap) return;
+    const horizontal = Math.abs(e.deltaX) > 0 ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+    if (!horizontal) return;
+    e.preventDefault();
+    onHorizontalScrollDelta(horizontal);
+  }, [wordWrap, onHorizontalScrollDelta]);
 
   return (
     <div
-      className={`diff-row side-by-side-row ${isFocusedChunk ? 'focused-chunk' : ''} ${decision !== 'pending' ? `decision-${decision}` : ''}`}
-      style={{ height: ROW_HEIGHT }}
+      className={`diff-row side-by-side-row ${wordWrap ? 'word-wrap-row' : ''} ${isFocusedChunk ? 'focused-chunk' : ''} ${decision !== 'pending' ? `decision-${decision}` : ''}`}
+      data-search-active={isActiveSearchRow ? 'true' : undefined}
+      style={wordWrap ? undefined : { height: ROW_HEIGHT }}
     >
       {/* Chunk action gutter */}
       <div className="chunk-gutter">
@@ -171,10 +269,15 @@ const SideBySideRowComponent: React.FC<RowProps> = memo(({
         <span className="line-number">
           {row.left?.oldLineNumber ?? ''}
         </span>
-        <span className={`line-content ${wordWrap ? 'word-wrap' : ''}`}>
-          {row.left ? (
-            <LineContent line={row.left} searchQuery={searchQuery} side="old" />
-          ) : null}
+        <span className={`line-content ${wordWrap ? 'word-wrap' : 'column-scroll'}`} onWheel={handleWheel}>
+          <span
+            className={!wordWrap ? 'line-content-inner' : undefined}
+            style={!wordWrap ? ({ '--column-scroll': `${horizontalScroll}px` } as React.CSSProperties) : undefined}
+          >
+            {row.left ? (
+              <LineContent line={row.left} searchQuery={searchQuery} side="old" />
+            ) : null}
+          </span>
         </span>
       </div>
 
@@ -186,10 +289,15 @@ const SideBySideRowComponent: React.FC<RowProps> = memo(({
         <span className="line-number">
           {row.right?.newLineNumber ?? ''}
         </span>
-        <span className={`line-content ${wordWrap ? 'word-wrap' : ''}`}>
-          {row.right ? (
-            <LineContent line={row.right} searchQuery={searchQuery} side="new" />
-          ) : null}
+        <span className={`line-content ${wordWrap ? 'word-wrap' : 'column-scroll'}`} onWheel={handleWheel}>
+          <span
+            className={!wordWrap ? 'line-content-inner' : undefined}
+            style={!wordWrap ? ({ '--column-scroll': `${horizontalScroll}px` } as React.CSSProperties) : undefined}
+          >
+            {row.right ? (
+              <LineContent line={row.right} searchQuery={searchQuery} side="new" />
+            ) : null}
+          </span>
         </span>
       </div>
     </div>

@@ -9,11 +9,30 @@ import { useKeyboard } from './hooks/useKeyboard';
 import { DEMO_DIFF } from './demo';
 
 export default function App() {
+  const allowedThemes: ThemeMode[] = ['dark', 'light', 'ocean', 'sand', 'forest', 'dracula', 'ayu'];
+
+  const getInitialTheme = (): ThemeMode => {
+    if (typeof window === 'undefined') return 'dark';
+
+    const fromDom = document.documentElement.getAttribute('data-theme');
+    if (allowedThemes.includes(fromDom as ThemeMode)) {
+      return fromDom as ThemeMode;
+    }
+
+    try {
+      const stored = window.localStorage.getItem('diffy-theme');
+      return allowedThemes.includes(stored as ThemeMode) ? (stored as ThemeMode) : 'dark';
+    } catch {
+      return 'dark';
+    }
+  };
+
   // ── Core state ───────────────────────────────────────────────
   const [files, setFiles] = useState<FileDiff[]>([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('side-by-side');
-  const [theme, setTheme] = useState<ThemeMode>('dark');
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
+  const [themeHydrated, setThemeHydrated] = useState<boolean>(() => !Boolean(window.desktopBridge?.getThemePreference));
   const [showFileTree, setShowFileTree] = useState(true);
   const [wordWrap, setWordWrap] = useState(false);
   const [contextLines] = useState(3);
@@ -27,6 +46,11 @@ export default function App() {
   const [chunkDecisions, setChunkDecisions] = useState<Record<string, ChunkDecision>>({});
   const [expandedRegions, setExpandedRegions] = useState<Set<string>>(new Set());
   const [focusedChunkIndex, setFocusedChunkIndex] = useState(0);
+
+  const logEvent = useCallback((level: string, message: string, meta?: unknown) => {
+    if (!window.desktopBridge?.logEvent) return;
+    void window.desktopBridge.logEvent(level, message, meta);
+  }, []);
 
   // ── Derived state ────────────────────────────────────────────
   const activeFile = files[activeFileIndex] || null;
@@ -51,29 +75,71 @@ export default function App() {
   }, [searchQuery, activeFile]);
 
   // ── Input handlers ───────────────────────────────────────────
-  const handleSubmitDiff = useCallback((diffText: string) => {
-    const parsed = parseUnifiedDiff(diffText);
-    if (parsed.length > 0) {
-      setFiles(parsed);
-      setActiveFileIndex(0);
-      setChunkDecisions({});
-      setExpandedRegions(new Set());
-      setFocusedChunkIndex(0);
-    }
-  }, []);
-
-  const handleSubmitTwoPanes = useCallback((oldText: string, newText: string, fileName?: string) => {
-    const diff = computeDiff(oldText, newText, fileName);
-    setFiles([diff]);
+  const applyParsedFiles = useCallback((parsed: FileDiff[]) => {
+    if (parsed.length === 0) return;
+    setFiles(parsed);
     setActiveFileIndex(0);
     setChunkDecisions({});
     setExpandedRegions(new Set());
     setFocusedChunkIndex(0);
   }, []);
 
+  const handleSubmitDiff = useCallback((diffText: string) => {
+    const parsed = parseUnifiedDiff(diffText);
+    applyParsedFiles(parsed);
+  }, [applyParsedFiles]);
+
+  const handleSubmitTwoPanes = useCallback((oldText: string, newText: string, fileName?: string) => {
+    const diff = computeDiff(oldText, newText, fileName);
+    applyParsedFiles([diff]);
+  }, [applyParsedFiles]);
+
   const handleLoadDemo = useCallback(() => {
     handleSubmitDiff(DEMO_DIFF);
   }, [handleSubmitDiff]);
+
+  const handleLoadRepoDiff = useCallback(async () => {
+    if (!window.desktopBridge) return;
+    try {
+      const repoPath = await window.desktopBridge.pickRepository();
+      if (!repoPath) return;
+
+      const diffText = await window.desktopBridge.getRepositoryDiff(repoPath);
+      if (!diffText.trim()) {
+        window.alert('No tracked changes found in this repository.');
+        return;
+      }
+
+      const parsed = parseUnifiedDiff(diffText);
+      if (parsed.length === 0) {
+        window.alert('Git returned diff text, but it could not be parsed.');
+        return;
+      }
+      applyParsedFiles(parsed);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load git diff.';
+      window.alert(message);
+    }
+  }, [applyParsedFiles]);
+
+  React.useEffect(() => {
+    if (!window.desktopBridge) return;
+    window.desktopBridge.getInitialRepository().then(async initial => {
+      if (!initial?.repoPath) return;
+      try {
+        const diffText = await window.desktopBridge!.getRepositoryDiff(initial.repoPath, initial.baseRef, initial.headRef);
+        if (!diffText.trim()) return;
+        const parsed = parseUnifiedDiff(diffText);
+        applyParsedFiles(parsed);
+      } catch (error) {
+        const details = initial.baseRef && initial.headRef
+          ? ` (${initial.baseRef}...${initial.headRef})`
+          : '';
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        window.alert(`Failed to load repository diff${details}.\n\n${message}`);
+      }
+    });
+  }, [applyParsedFiles]);
 
   // ── Chunk decision handlers ──────────────────────────────────
   const handleChunkDecision = useCallback((chunkId: string, decision: ChunkDecision) => {
@@ -184,7 +250,56 @@ export default function App() {
   // ── Apply theme ──────────────────────────────────────────────
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+    if (!themeHydrated) return;
+    try {
+      window.localStorage.setItem('diffy-theme', theme);
+    } catch {
+      // Ignore storage failures; theme still applies to current window.
+    }
+    if (window.desktopBridge?.setThemePreference) {
+      void window.desktopBridge.setThemePreference(theme);
+    }
+    logEvent('info', 'Theme applied', { theme });
+  }, [theme, themeHydrated, logEvent]);
+
+  React.useEffect(() => {
+    if (!window.desktopBridge?.getThemePreference) {
+      setThemeHydrated(true);
+      return;
+    }
+    window.desktopBridge.getThemePreference().then(storedTheme => {
+      if (storedTheme && allowedThemes.includes(storedTheme as ThemeMode)) {
+        setTheme(storedTheme as ThemeMode);
+      }
+    }).catch(() => {
+      // Ignore preference lookup errors.
+    }).finally(() => {
+      setThemeHydrated(true);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      logEvent('error', 'Renderer window error', {
+        message: event.message,
+        source: event.filename,
+        line: event.lineno,
+        column: event.colno,
+      });
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      logEvent('error', 'Renderer unhandled rejection', {
+        reason: String(event.reason),
+      });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    logEvent('info', 'Renderer mounted');
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, [logEvent]);
 
   // ── Back to input ────────────────────────────────────────────
   const handleBack = useCallback(() => {
@@ -201,6 +316,7 @@ export default function App() {
           onSubmitDiff={handleSubmitDiff}
           onSubmitTwoPanes={handleSubmitTwoPanes}
           onLoadDemo={handleLoadDemo}
+          onLoadRepoDiff={window.desktopBridge ? handleLoadRepoDiff : undefined}
         />
       </div>
     );
@@ -303,6 +419,7 @@ export default function App() {
               onChunkDecision={handleChunkDecision}
               focusedChunkIndex={focusedChunkIndex}
               searchQuery={searchQuery}
+              activeSearchIndex={activeSearchIndex}
               wordWrap={wordWrap}
             />
           )}

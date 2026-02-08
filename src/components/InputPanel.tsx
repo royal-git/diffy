@@ -5,9 +5,10 @@ interface Props {
   onSubmitDiff: (diffText: string) => void;
   onSubmitTwoPanes: (oldText: string, newText: string, fileName?: string) => void;
   onLoadDemo: () => void;
+  onLoadRepoDiff?: () => void;
 }
 
-export const InputPanel: React.FC<Props> = memo(({ onSubmitDiff, onSubmitTwoPanes, onLoadDemo }) => {
+export const InputPanel: React.FC<Props> = memo(({ onSubmitDiff, onSubmitTwoPanes, onLoadDemo, onLoadRepoDiff }) => {
   const [mode, setMode] = useState<InputMode>('two-pane');
   const [diffText, setDiffText] = useState('');
   const [oldText, setOldText] = useState('');
@@ -143,6 +144,11 @@ export const InputPanel: React.FC<Props> = memo(({ onSubmitDiff, onSubmitTwoPane
         <button className="btn btn-primary" onClick={handleSubmit}>
           View Diff
         </button>
+        {onLoadRepoDiff ? (
+          <button className="btn btn-secondary" onClick={onLoadRepoDiff}>
+            Open Git Repo
+          </button>
+        ) : null}
         <button className="btn btn-secondary" onClick={onLoadDemo}>
           Try Demo
         </button>

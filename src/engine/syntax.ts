@@ -61,12 +61,13 @@ const BUILTINS = new Set([
 const IDENT_RE = /^[a-zA-Z_$][a-zA-Z0-9_$]*/;
 const WHITESPACE_RE = /^\s+/;
 
-export function highlightLine(line: string): SyntaxSpan[] {
+export function highlightLine(line: string | null | undefined): SyntaxSpan[] {
   const spans: SyntaxSpan[] = [];
+  const text = line ?? '';
   let pos = 0;
 
-  while (pos < line.length) {
-    const rest = line.slice(pos);
+  while (pos < text.length) {
+    const rest = text.slice(pos);
 
     // Whitespace
     const wsMatch = rest.match(WHITESPACE_RE);

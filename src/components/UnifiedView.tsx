@@ -14,6 +14,7 @@ interface Props {
   onChunkDecision: (chunkId: string, decision: ChunkDecision) => void;
   focusedChunkIndex: number;
   searchQuery: string;
+  activeSearchIndex: number;
   wordWrap: boolean;
 }
 
@@ -24,6 +25,7 @@ interface UnifiedRow {
   isCollapsedPlaceholder?: boolean;
   collapsedCount?: number;
   collapsedStart?: number;
+  collapsedKey?: string;
 }
 
 export const UnifiedView: React.FC<Props> = memo(({
@@ -35,20 +37,24 @@ export const UnifiedView: React.FC<Props> = memo(({
   onChunkDecision,
   focusedChunkIndex,
   searchQuery,
+  activeSearchIndex,
   wordWrap,
 }) => {
+  const useVirtualization = !wordWrap;
   const rows = useMemo(() => {
     const result: UnifiedRow[] = [];
     for (const chunk of chunks) {
+      const firstChangedIndex = chunk.lines.findIndex(line => line.type !== 'unchanged');
       for (let i = 0; i < chunk.lines.length; i++) {
         // Check for collapsible regions
         const unchangedRun = getUnchangedRun(chunk.lines, i);
         if (unchangedRun > contextLines * 2 + 4) {
-          const regionKey = `${chunk.id}-${i}`;
+          const collapsedStart = i + contextLines;
+          const regionKey = `${chunk.id}-${collapsedStart}`;
           if (!expandedRegions.has(regionKey)) {
             // Show context before
             for (let j = 0; j < contextLines; j++) {
-              result.push({ line: chunk.lines[i + j], chunkId: chunk.id, isFirstInChunk: i + j === 0 });
+              result.push({ line: chunk.lines[i + j], chunkId: chunk.id, isFirstInChunk: i + j === firstChangedIndex });
             }
             // Collapsed placeholder
             const collapsedCount = unchangedRun - contextLines * 2;
@@ -58,14 +64,15 @@ export const UnifiedView: React.FC<Props> = memo(({
               isFirstInChunk: false,
               isCollapsedPlaceholder: true,
               collapsedCount,
-              collapsedStart: i + contextLines,
+              collapsedStart,
+              collapsedKey: regionKey,
             });
             // Skip to context after
             i += unchangedRun - contextLines - 1;
             continue;
           }
         }
-        result.push({ line: chunk.lines[i], chunkId: chunk.id, isFirstInChunk: i === 0 });
+        result.push({ line: chunk.lines[i], chunkId: chunk.id, isFirstInChunk: i === firstChangedIndex });
       }
     }
     return result;
@@ -90,12 +97,35 @@ export const UnifiedView: React.FC<Props> = memo(({
   }, [rows]);
 
   React.useEffect(() => {
-    if (focusedChunkIndex >= 0 && focusedChunkIndex < chunkStarts.length) {
+    if (useVirtualization && focusedChunkIndex >= 0 && focusedChunkIndex < chunkStarts.length) {
       scrollTo(chunkStarts[focusedChunkIndex]);
     }
-  }, [focusedChunkIndex, chunkStarts, scrollTo]);
+  }, [focusedChunkIndex, chunkStarts, scrollTo, useVirtualization]);
 
-  const visibleRows = rows.slice(visibleRange.start, visibleRange.end);
+  const start = useVirtualization ? visibleRange.start : 0;
+  const end = useVirtualization ? visibleRange.end : rows.length;
+  const visibleRows = rows.slice(start, end);
+  const searchMatchRows = useMemo(() => {
+    if (!searchQuery) return [];
+    const q = searchQuery.toLowerCase();
+    const matches: number[] = [];
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const line = rows[rowIndex].line;
+      if (!line) continue;
+      if (line.content.toLowerCase().includes(q)) matches.push(rowIndex);
+    }
+    return matches;
+  }, [rows, searchQuery]);
+  const activeSearchRowIndex = useMemo(() => {
+    if (!searchQuery || searchMatchRows.length === 0) return -1;
+    const idx = ((activeSearchIndex % searchMatchRows.length) + searchMatchRows.length) % searchMatchRows.length;
+    return searchMatchRows[idx];
+  }, [searchQuery, searchMatchRows, activeSearchIndex]);
+
+  React.useEffect(() => {
+    if (!searchQuery || searchMatchRows.length === 0 || !useVirtualization) return;
+    if (activeSearchRowIndex >= 0) scrollTo(activeSearchRowIndex);
+  }, [searchQuery, searchMatchRows, activeSearchRowIndex, useVirtualization, scrollTo]);
 
   return (
     <div
@@ -103,23 +133,43 @@ export const UnifiedView: React.FC<Props> = memo(({
       className="diff-scroll-container"
       style={{ overflow: 'auto', height: '100%', position: 'relative' }}
     >
-      <div style={{ height: totalHeight, position: 'relative' }}>
-        <div style={{ transform: `translateY(${offsetY}px)` }}>
+      {useVirtualization ? (
+        <div style={{ height: totalHeight, position: 'relative' }}>
+          <div style={{ transform: `translateY(${offsetY}px)` }}>
+            {visibleRows.map((row, i) => (
+              <UnifiedRowComponent
+                key={start + i}
+                row={row}
+                decision={chunkDecisions[row.chunkId] || 'pending'}
+                onDecision={onChunkDecision}
+                onExpandRegion={onExpandRegion}
+                searchQuery={searchQuery}
+                wordWrap={wordWrap}
+                isActiveSearchRow={start + i === activeSearchRowIndex}
+                isFocused={chunkStarts[focusedChunkIndex] !== undefined &&
+                  row.chunkId === rows[chunkStarts[focusedChunkIndex]]?.chunkId}
+              />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div>
           {visibleRows.map((row, i) => (
             <UnifiedRowComponent
-              key={visibleRange.start + i}
+              key={start + i}
               row={row}
               decision={chunkDecisions[row.chunkId] || 'pending'}
               onDecision={onChunkDecision}
               onExpandRegion={onExpandRegion}
               searchQuery={searchQuery}
               wordWrap={wordWrap}
+              isActiveSearchRow={start + i === activeSearchRowIndex}
               isFocused={chunkStarts[focusedChunkIndex] !== undefined &&
                 row.chunkId === rows[chunkStarts[focusedChunkIndex]]?.chunkId}
             />
           ))}
         </div>
-      </div>
+      )}
     </div>
   );
 });
@@ -143,6 +193,7 @@ interface RowProps {
   onExpandRegion: (regionKey: string) => void;
   searchQuery: string;
   wordWrap: boolean;
+  isActiveSearchRow: boolean;
   isFocused: boolean;
 }
 
@@ -153,6 +204,7 @@ const UnifiedRowComponent: React.FC<RowProps> = memo(({
   onExpandRegion,
   searchQuery,
   wordWrap,
+  isActiveSearchRow,
   isFocused,
 }) => {
   if (row.isCollapsedPlaceholder) {
@@ -160,7 +212,7 @@ const UnifiedRowComponent: React.FC<RowProps> = memo(({
       <div className="diff-row collapsed-row unified" style={{ height: ROW_HEIGHT }}>
         <button
           className="expand-button"
-          onClick={() => onExpandRegion(`${row.chunkId}-${row.collapsedStart}`)}
+          onClick={() => onExpandRegion(row.collapsedKey || `${row.chunkId}-${row.collapsedStart}`)}
         >
           <span className="expand-icon">&#x25B6;</span>
           {row.collapsedCount} unchanged lines
@@ -176,8 +228,9 @@ const UnifiedRowComponent: React.FC<RowProps> = memo(({
 
   return (
     <div
-      className={`diff-row unified-row ${type} ${isFocused ? 'focused-chunk' : ''} ${decision !== 'pending' ? `decision-${decision}` : ''}`}
-      style={{ height: ROW_HEIGHT }}
+      className={`diff-row unified-row ${type} ${wordWrap ? 'word-wrap-row' : ''} ${isFocused ? 'focused-chunk' : ''} ${decision !== 'pending' ? `decision-${decision}` : ''}`}
+      data-search-active={isActiveSearchRow ? 'true' : undefined}
+      style={wordWrap ? undefined : { height: ROW_HEIGHT }}
     >
       <div className="chunk-gutter">
         {showGutter && (

@@ -13,6 +13,7 @@ interface Props {
   onChunkDecision: (chunkId: string, decision: ChunkDecision) => void;
   focusedChunkIndex: number;
   searchQuery: string;
+  activeSearchIndex: number;
   wordWrap: boolean;
 }
 
@@ -26,6 +27,7 @@ export const DiffViewer: React.FC<Props> = memo(({
   onChunkDecision,
   focusedChunkIndex,
   searchQuery,
+  activeSearchIndex,
   wordWrap,
 }) => {
   const chunkCount = file.chunks.length;
@@ -74,6 +76,7 @@ export const DiffViewer: React.FC<Props> = memo(({
             onChunkDecision={onChunkDecision}
             focusedChunkIndex={focusedChunkIndex}
             searchQuery={searchQuery}
+            activeSearchIndex={activeSearchIndex}
             wordWrap={wordWrap}
           />
         ) : (
@@ -86,6 +89,7 @@ export const DiffViewer: React.FC<Props> = memo(({
             onChunkDecision={onChunkDecision}
             focusedChunkIndex={focusedChunkIndex}
             searchQuery={searchQuery}
+            activeSearchIndex={activeSearchIndex}
             wordWrap={wordWrap}
           />
         )}
