@@ -1,12 +1,10 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import type { FileDiff, ViewMode, ThemeMode, ChunkDecision } from './types';
-import { parseUnifiedDiff, computeDiff } from './engine/diff';
+import { parseUnifiedDiff } from './engine/diff';
 import { Toolbar } from './components/Toolbar';
 import { FileTree } from './components/FileTree';
 import { DiffViewer } from './components/DiffViewer';
-import { InputPanel } from './components/InputPanel';
 import { useKeyboard } from './hooks/useKeyboard';
-import { DEMO_DIFF } from './demo';
 
 export default function App() {
   const allowedThemes: ThemeMode[] = ['dark', 'light', 'ocean', 'sand', 'forest', 'dracula', 'ayu'];
@@ -46,6 +44,8 @@ export default function App() {
   const [chunkDecisions, setChunkDecisions] = useState<Record<string, ChunkDecision>>({});
   const [expandedRegions, setExpandedRegions] = useState<Set<string>>(new Set());
   const [focusedChunkIndex, setFocusedChunkIndex] = useState(0);
+  const [currentRepoTarget, setCurrentRepoTarget] = useState<{ repoPath: string; baseRef?: string | null; headRef?: string | null } | null>(null);
+  const [emptyStateMessage, setEmptyStateMessage] = useState('No diff loaded.');
 
   const logEvent = useCallback((level: string, message: string, meta?: unknown) => {
     if (!window.desktopBridge?.logEvent) return;
@@ -74,7 +74,7 @@ export default function App() {
     return count;
   }, [searchQuery, activeFile]);
 
-  // ── Input handlers ───────────────────────────────────────────
+  // ── Load handlers ───────────────────────────────────────────
   const applyParsedFiles = useCallback((parsed: FileDiff[]) => {
     if (parsed.length === 0) return;
     setFiles(parsed);
@@ -84,62 +84,64 @@ export default function App() {
     setFocusedChunkIndex(0);
   }, []);
 
-  const handleSubmitDiff = useCallback((diffText: string) => {
-    const parsed = parseUnifiedDiff(diffText);
-    applyParsedFiles(parsed);
-  }, [applyParsedFiles]);
-
-  const handleSubmitTwoPanes = useCallback((oldText: string, newText: string, fileName?: string) => {
-    const diff = computeDiff(oldText, newText, fileName);
-    applyParsedFiles([diff]);
-  }, [applyParsedFiles]);
-
-  const handleLoadDemo = useCallback(() => {
-    handleSubmitDiff(DEMO_DIFF);
-  }, [handleSubmitDiff]);
-
-  const handleLoadRepoDiff = useCallback(async () => {
-    if (!window.desktopBridge) return;
+  const loadRepositoryDiff = useCallback(async (
+    repoPath: string,
+    baseRef?: string | null,
+    headRef?: string | null
+  ) => {
+    if (!window.desktopBridge) {
+      setEmptyStateMessage('Desktop bridge is unavailable.');
+      return;
+    }
     try {
-      const repoPath = await window.desktopBridge.pickRepository();
-      if (!repoPath) return;
-
-      const diffText = await window.desktopBridge.getRepositoryDiff(repoPath);
+      const diffText = await window.desktopBridge.getRepositoryDiff(repoPath, baseRef, headRef);
+      setCurrentRepoTarget({ repoPath, baseRef: baseRef || null, headRef: headRef || null });
       if (!diffText.trim()) {
-        window.alert('No tracked changes found in this repository.');
+        setFiles([]);
+        setEmptyStateMessage('No tracked changes found for this repository/ref.');
         return;
       }
 
       const parsed = parseUnifiedDiff(diffText);
       if (parsed.length === 0) {
-        window.alert('Git returned diff text, but it could not be parsed.');
+        setFiles([]);
+        setEmptyStateMessage('Git returned diff text, but it could not be parsed.');
         return;
       }
+      setEmptyStateMessage('');
       applyParsedFiles(parsed);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load git diff.';
-      window.alert(message);
+      setFiles([]);
+      setEmptyStateMessage(message);
     }
   }, [applyParsedFiles]);
+
+  const handlePickRepository = useCallback(async () => {
+    if (!window.desktopBridge) return;
+    const repoPath = await window.desktopBridge.pickRepository();
+    if (!repoPath) return;
+    await loadRepositoryDiff(repoPath);
+  }, [loadRepositoryDiff]);
 
   React.useEffect(() => {
     if (!window.desktopBridge) return;
     window.desktopBridge.getInitialRepository().then(async initial => {
-      if (!initial?.repoPath) return;
+      if (!initial?.repoPath) {
+        setEmptyStateMessage('Run `diffy` from inside a git repository.');
+        return;
+      }
       try {
-        const diffText = await window.desktopBridge!.getRepositoryDiff(initial.repoPath, initial.baseRef, initial.headRef);
-        if (!diffText.trim()) return;
-        const parsed = parseUnifiedDiff(diffText);
-        applyParsedFiles(parsed);
+        await loadRepositoryDiff(initial.repoPath, initial.baseRef, initial.headRef);
       } catch (error) {
         const details = initial.baseRef && initial.headRef
           ? ` (${initial.baseRef}...${initial.headRef})`
           : '';
         const message = error instanceof Error ? error.message : 'Unknown error';
-        window.alert(`Failed to load repository diff${details}.\n\n${message}`);
+        setEmptyStateMessage(`Failed to load repository diff${details}: ${message}`);
       }
     });
-  }, [applyParsedFiles]);
+  }, [loadRepositoryDiff]);
 
   // ── Chunk decision handlers ──────────────────────────────────
   const handleChunkDecision = useCallback((chunkId: string, decision: ChunkDecision) => {
@@ -301,23 +303,37 @@ export default function App() {
     };
   }, [logEvent]);
 
-  // ── Back to input ────────────────────────────────────────────
-  const handleBack = useCallback(() => {
-    setFiles([]);
-    setChunkDecisions({});
-    setExpandedRegions(new Set());
-  }, []);
+  const handleReload = useCallback(() => {
+    if (currentRepoTarget) {
+      void loadRepositoryDiff(
+        currentRepoTarget.repoPath,
+        currentRepoTarget.baseRef || null,
+        currentRepoTarget.headRef || null
+      );
+      return;
+    }
+    void handlePickRepository();
+  }, [currentRepoTarget, loadRepositoryDiff, handlePickRepository]);
 
   // ── Render ───────────────────────────────────────────────────
   if (!hasFiles) {
     return (
       <div className="app" data-theme={theme}>
-        <InputPanel
-          onSubmitDiff={handleSubmitDiff}
-          onSubmitTwoPanes={handleSubmitTwoPanes}
-          onLoadDemo={handleLoadDemo}
-          onLoadRepoDiff={window.desktopBridge ? handleLoadRepoDiff : undefined}
-        />
+        <div className="diff-empty">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+            <p>{emptyStateMessage}</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="toolbar-btn" onClick={handleReload}>
+                Reload
+              </button>
+              {window.desktopBridge && (
+                <button className="toolbar-btn" onClick={handlePickRepository}>
+                  Open Repository
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -350,7 +366,7 @@ export default function App() {
       />
 
       <div className="main-content">
-        {showFileTree && files.length > 1 && (
+        {showFileTree && files.length > 0 && (
           <FileTree
             files={files}
             activeIndex={activeFileIndex}
@@ -361,8 +377,8 @@ export default function App() {
 
         <div className="diff-panel">
           <div className="diff-panel-header">
-            <button className="back-btn" onClick={handleBack} title="Back to input">
-              &#x2190; New Diff
+            <button className="back-btn" onClick={handleReload} title="Reload current diff">
+              &#x21BB; Reload
             </button>
             {files.length > 1 && (
               <div className="file-nav">
