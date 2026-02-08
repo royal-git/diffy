@@ -23,43 +23,65 @@ Run `diffy` from any repository and review file changes in a desktop UI.
 
 - macOS
 - `git`
+- Node.js + npm
 - Optional: GitHub CLI `gh` (only for `diffy --pr <number>`)
 
-## Install (Users)
+## Dev Setup (Recommended)
 
-### 1. Install the app
-
-- Download the latest `Diffy.dmg` release artifact.
-- Open the DMG and drag `Diffy.app` into `Applications`.
-- Launch `Diffy.app` once from `Applications` (macOS trust prompt).
-
-### 2. Install terminal command
-
-```bash
-npm i -g github:royal-git/diffy
-```
-
-Now you can run:
-
-```bash
-diffy --help
-```
-
-## Install (Developers)
+### 1. Clone and install dependencies
 
 ```bash
 git clone https://github.com/royal-git/diffy.git
 cd diffy
 npm install
-npm link
 ```
 
-## Quick Start
-
-Run inside any Git repository:
+### 2. Install terminal command from local checkout
 
 ```bash
+npm i -g .
+rehash
+diffy --help
+```
+
+### 3. Build desktop app (prod-like)
+
+```bash
+npm run desktop:build
+```
+
+### 4. Install app bundle
+
+- Open generated DMG in `dist/`
+- Drag `Diffy.app` to `Applications`
+- Launch once from `Applications` (macOS security prompt)
+
+### 5. Use from terminal in any repo
+
+```bash
+cd /path/to/any/git/repo
 diffy
+```
+
+## Daily Workflows
+
+### Dev hot reload
+
+```bash
+npm run desktop:dev
+```
+
+### Rebuild production app after changes
+
+```bash
+npm run desktop:build
+```
+
+### Reinstall CLI after changing `bin/diffy.cjs`
+
+```bash
+npm i -g .
+rehash
 ```
 
 ## CLI Usage
@@ -93,10 +115,19 @@ diffy --pr 123
 - `diffy` prefers launching installed `Diffy.app` (production path).
 - If no installed app is found, it falls back to local Electron runtime in a dev checkout.
 
-## Build Release App (Maintainers)
+## Troubleshooting
+
+### `diffy: command not found`
 
 ```bash
-npm run desktop:build
+npm i -g .
+rehash
+which diffy
 ```
 
-Artifacts are generated in `dist/` (including DMG/app outputs).
+### macOS "cannot verify app" (unsigned beta)
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Diffy.app
+open /Applications/Diffy.app
+```
