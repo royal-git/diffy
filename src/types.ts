@@ -73,7 +73,3 @@ export interface SearchMatch {
   columnStart: number;
   columnEnd: number;
 }
-
-// ── Input modes ──────────────────────────────────────────────────
-
-export type InputMode = 'unified-diff' | 'two-pane' | 'demo';
