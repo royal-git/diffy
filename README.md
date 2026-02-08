@@ -1,54 +1,57 @@
 # Diffy
 
-Terminal-first desktop Git diff viewer.
+Terminal-first desktop Git diff viewer for macOS.
 
-Open from any repo with one command and review changes in a side-by-side UI.
+Run `diffy` from any repository and review file changes in a desktop UI.
 
 ## Screenshot
 
 ![Diffy UI](docs/screenshot.jpg)
 
-
-### Run without install
-
-```bash
-npx github:royal-git/diffy --help
-```
-
 ## Highlights
 
 - Side-by-side and unified diff views
+- Markdown preview for README/`.md` files
+- Image preview (current + base when available)
 - Word wrap toggle
-- Search + next/previous match navigation
+- Search with next/previous navigation
 - Chunk-level accept/reject tracking
-- Theme presets (persisted)
+- Persisted theme presets
 - Git ref and PR compare modes from terminal
 
 ## Requirements
 
 - macOS
 - `git`
-- Node.js + npm
 - Optional: GitHub CLI `gh` (only for `diffy --pr <number>`)
 
-## Install From GitHub
+## Install (Users)
 
-### Global install (recommended)
+### 1. Install the app
+
+- Download the latest `Diffy.dmg` release artifact.
+- Open the DMG and drag `Diffy.app` into `Applications`.
+- Launch `Diffy.app` once from `Applications` (macOS trust prompt).
+
+### 2. Install terminal command
 
 ```bash
 npm i -g github:royal-git/diffy
+```
+
+Now you can run:
+
+```bash
 diffy --help
 ```
 
-
-### Dev mode (clone + link)
+## Install (Developers)
 
 ```bash
 git clone https://github.com/royal-git/diffy.git
 cd diffy
 npm install
 npm link
-diffy --help
 ```
 
 ## Quick Start
@@ -85,6 +88,15 @@ Open a PR diff in the current project:
 diffy --pr 123
 ```
 
-## Behavior Notes
+## Launch Behavior
 
-- `diffy` includes untracked files.
+- `diffy` prefers launching installed `Diffy.app` (production path).
+- If no installed app is found, it falls back to local Electron runtime in a dev checkout.
+
+## Build Release App (Maintainers)
+
+```bash
+npm run desktop:build
+```
+
+Artifacts are generated in `dist/` (including DMG/app outputs).
