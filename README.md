@@ -6,7 +6,7 @@ Open from any repo with one command and review changes in a side-by-side UI.
 
 ## Screenshot
 
-![Diffy UI](docs/screenshot.png)
+![Diffy UI](docs/screenshot.jpg)
 
 ## Highlights
 
