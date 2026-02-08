@@ -5,10 +5,9 @@ import { Toolbar } from './components/Toolbar';
 import { FileTree } from './components/FileTree';
 import { DiffViewer } from './components/DiffViewer';
 import { useKeyboard } from './hooks/useKeyboard';
+import { allowedThemes } from './themes';
 
 export default function App() {
-  const allowedThemes: ThemeMode[] = ['dark', 'light', 'ocean', 'sand', 'forest', 'dracula', 'ayu'];
-
   const getInitialTheme = (): ThemeMode => {
     if (typeof window === 'undefined') return 'dark';
 

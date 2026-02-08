@@ -1,5 +1,6 @@
 import React, { memo, useRef, useEffect } from 'react';
 import type { ViewMode, ThemeMode, FileDiff, ChunkDecision } from '../types';
+import { themePresets } from '../themes';
 
 interface Props {
   viewMode: ViewMode;
@@ -193,15 +194,18 @@ export const Toolbar: React.FC<Props> = memo(({
           title="Theme preset"
         >
           <optgroup label="Night">
-            <option value="dark">Tokyo Night</option>
-            <option value="dracula">Dracula</option>
-            <option value="ayu">Ayu</option>
-            <option value="ocean">Ocean Ink</option>
-            <option value="forest">Forest Lab</option>
+            {themePresets
+              .filter(themePreset => themePreset.group === 'Night')
+              .map(themePreset => (
+                <option key={themePreset.id} value={themePreset.id}>{themePreset.label}</option>
+              ))}
           </optgroup>
           <optgroup label="Day">
-            <option value="light">Paper</option>
-            <option value="sand">Sandstone</option>
+            {themePresets
+              .filter(themePreset => themePreset.group === 'Day')
+              .map(themePreset => (
+                <option key={themePreset.id} value={themePreset.id}>{themePreset.label}</option>
+              ))}
           </optgroup>
         </select>
       </div>

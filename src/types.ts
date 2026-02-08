@@ -48,7 +48,7 @@ export interface SideBySideRow {
 // ── View state ───────────────────────────────────────────────────
 
 export type ViewMode = 'side-by-side' | 'unified';
-export type ThemeMode = 'dark' | 'light' | 'ocean' | 'sand' | 'forest' | 'dracula' | 'ayu';
+export type ThemeMode = string;
 export type ChunkDecision = 'accepted' | 'rejected' | 'pending';
 
 export interface DiffViewState {

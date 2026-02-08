@@ -73,8 +73,7 @@ function writePrefs(next) {
 }
 
 function getWindowBackgroundColor() {
-  const theme = readPrefs().theme;
-  if (theme === 'light' || theme === 'sand') return '#ffffff';
+  // Keep startup background stable; renderer applies the exact themed surface.
   return '#1a1b26';
 }
 

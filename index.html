@@ -8,12 +8,10 @@
     <script>
       (function () {
         try {
-          var allowed = ['dark', 'light', 'ocean', 'sand', 'forest', 'dracula', 'ayu'];
           var stored = window.localStorage.getItem('diffy-theme');
-          var theme = allowed.indexOf(stored) >= 0 ? stored : 'dark';
+          var theme = stored || 'dark';
           document.documentElement.setAttribute('data-theme', theme);
-          var bg = theme === 'light' || theme === 'sand' ? '#ffffff' : '#1a1b26';
-          document.documentElement.style.backgroundColor = bg;
+          document.documentElement.style.backgroundColor = '#1a1b26';
           if (window.desktopBridge && window.desktopBridge.logEvent) {
             window.desktopBridge.logEvent('info', 'Theme bootstrap in index.html', { theme: theme });
           }
