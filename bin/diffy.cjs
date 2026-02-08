@@ -29,7 +29,7 @@ for (let i = 0; i < args.length; i++) {
         '',
         'Common usage:',
         '  diffy',
-        '    Show local uncommitted changes in your current repo.',
+        '    Show local uncommitted changes (tracked + untracked files) in your current repo.',
         '',
         '  diffy -b origin/master',
         '    Compare commits on your current branch against origin/master.',
@@ -205,7 +205,7 @@ if (pullRequestNumber) {
 if (baseRef && headRef) {
   log(`Comparing refs '${baseRef}...${headRef}'`);
 } else {
-  log('Opening working-tree diff (HEAD vs local changes)');
+  log('Opening working-tree diff (HEAD vs local tracked + untracked changes)');
 }
 
 const child = spawn(electronBinary, [electronMain], {

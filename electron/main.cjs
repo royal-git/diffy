@@ -121,6 +121,41 @@ function runGit(args, cwd) {
   });
 }
 
+function runGitWithAllowedExitCodes(args, cwd, allowedExitCodes = []) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd, maxBuffer: 1024 * 1024 * 20 }, (error, stdout, stderr) => {
+      if (error) {
+        const code = typeof error.code === 'number' ? error.code : null;
+        if (code !== null && allowedExitCodes.includes(code)) {
+          resolve(stdout);
+          return;
+        }
+        const message = stderr?.trim() || error.message;
+        reject(new Error(message));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+async function buildUntrackedDiff(repoRoot) {
+  const untrackedRaw = await runGit(['ls-files', '--others', '--exclude-standard', '-z'], repoRoot);
+  const untrackedFiles = untrackedRaw.split('\0').filter(Boolean);
+  if (untrackedFiles.length === 0) return '';
+
+  const patches = [];
+  for (const filePath of untrackedFiles) {
+    const patch = await runGitWithAllowedExitCodes(
+      ['diff', '--no-color', '--no-index', '--', '/dev/null', filePath],
+      repoRoot,
+      [1]
+    );
+    if (patch.trim()) patches.push(patch);
+  }
+  return patches.join('\n');
+}
+
 async function buildRepoDiff(repoPath, baseRef, headRef) {
   if (!repoPath) {
     throw new Error('Repository path is required.');
@@ -138,12 +173,15 @@ async function buildRepoDiff(repoPath, baseRef, headRef) {
     .catch(() => false);
 
   if (hasHead) {
-    return runGit(['diff', '--no-color', 'HEAD'], repoRoot);
+    const tracked = await runGit(['diff', '--no-color', 'HEAD'], repoRoot);
+    const untracked = await buildUntrackedDiff(repoRoot);
+    return [tracked, untracked].filter(Boolean).join('\n');
   }
 
   const staged = await runGit(['diff', '--no-color', '--cached'], repoRoot);
   const unstaged = await runGit(['diff', '--no-color'], repoRoot);
-  return [staged, unstaged].filter(Boolean).join('\n');
+  const untracked = await buildUntrackedDiff(repoRoot);
+  return [staged, unstaged, untracked].filter(Boolean).join('\n');
 }
 
 ipcMain.handle('repo:pick', async () => {
