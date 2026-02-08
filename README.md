@@ -1,30 +1,45 @@
 # Diffy
 
-Desktop git diff viewer you run from terminal.
+Terminal-first desktop Git diff viewer.
 
-## Prerequisites
+Open from any repo with one command and review changes in a side-by-side UI.
+
+## Screenshot
+
+![Diffy UI](docs/screenshot.png)
+
+## Highlights
+
+- Side-by-side and unified diff views
+- Word wrap toggle
+- Search + next/previous match navigation
+- Chunk-level accept/reject tracking
+- Theme presets (persisted)
+- Git ref and PR compare modes from terminal
+
+## Requirements
 
 - macOS
 - `git`
 - Node.js + npm
-- Optional: GitHub CLI `gh` (only needed for `diffy --pr <number>`)
+- Optional: GitHub CLI `gh` (only for `diffy --pr <number>`)
 
-## Install (from GitHub)
+## Install From GitHub
 
-### Option 1: Global install from GitHub (best for normal use)
+### Global install (recommended)
 
 ```bash
 npm i -g github:<owner>/<repo>
 diffy --help
 ```
 
-### Option 2: Run directly with `npx` (no install)
+### Run without install
 
 ```bash
 npx github:<owner>/<repo> --help
 ```
 
-### Option 3: Clone + link (best for development)
+### Dev mode (clone + link)
 
 ```bash
 git clone https://github.com/<owner>/<repo>.git
@@ -34,25 +49,17 @@ npm link
 diffy --help
 ```
 
-## Which method should I use?
+## Quick Start
 
-- Use `npm i -g github:<owner>/<repo>` if you just want to use Diffy.
-- Use `npm link` only if you plan to edit/contribute code.
-
-## New Machine Quick Start
-
-On a new machine, this is the easiest path:
+Run inside any Git repository:
 
 ```bash
-npm i -g github:<owner>/<repo>
-diffy --help
+diffy
 ```
 
-Then run `diffy` inside any git repository.
+## CLI Usage
 
-## Usage
-
-Run inside a git repository:
+Show local changes (tracked + untracked):
 
 ```bash
 diffy
@@ -64,20 +71,20 @@ Compare current branch commits against a ref:
 diffy -b origin/master
 ```
 
-Explicit base/head comparison:
+Explicit base/head compare:
 
 ```bash
 diffy --base origin/main --head origin/feature/my-branch
 ```
 
-Open a GitHub pull request diff (uses `gh`):
+Open a PR diff in the current project:
 
 ```bash
 diffy --pr 123
 ```
 
-## Notes
+## Behavior Notes
 
-- `diffy` shows local uncommitted changes, including untracked files.
-- `diffy -b <ref>` compares your current branch commits against `<ref>`.
-- `diffy --pr <number>` requires GitHub CLI (`gh`) and a repo whose `origin` points to the PR base repository.
+- `diffy` includes untracked files.
+- `diffy -b <ref>` compares branch commits (not unstaged edits).
+- `diffy --pr <number>` resolves base/head from `gh` and fetches PR refs.
