@@ -139,6 +139,73 @@ function runGitWithAllowedExitCodes(args, cwd, allowedExitCodes = []) {
   });
 }
 
+function runGitBuffer(args, cwd) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd, encoding: 'buffer', maxBuffer: 1024 * 1024 * 40 }, (error, stdout, stderr) => {
+      if (error) {
+        const stderrText = Buffer.isBuffer(stderr) ? stderr.toString('utf8') : String(stderr || '');
+        const message = stderrText.trim() || error.message;
+        reject(new Error(message));
+        return;
+      }
+      resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout || '', 'utf8'));
+    });
+  });
+}
+
+async function resolveRepoRoot(repoPath) {
+  await runGit(['rev-parse', '--is-inside-work-tree'], repoPath);
+  return (await runGit(['rev-parse', '--show-toplevel'], repoPath)).trim();
+}
+
+function resolveRepoFilePath(repoRoot, relativePath) {
+  const target = path.resolve(repoRoot, relativePath);
+  const safeRoot = repoRoot.endsWith(path.sep) ? repoRoot : `${repoRoot}${path.sep}`;
+  if (target !== repoRoot && !target.startsWith(safeRoot)) {
+    throw new Error(`Path escapes repository root: ${relativePath}`);
+  }
+  return target;
+}
+
+async function hasRef(repoRoot, ref, filePath) {
+  if (!ref) return false;
+  try {
+    await runGit(['cat-file', '-e', `${ref}:${filePath}`], repoRoot);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readTextFromRef(repoRoot, ref, filePath) {
+  return runGit(['show', `${ref}:${filePath}`], repoRoot);
+}
+
+async function readBinaryFromRef(repoRoot, ref, filePath) {
+  return runGitBuffer(['show', `${ref}:${filePath}`], repoRoot);
+}
+
+function readTextFromWorkingTree(repoRoot, filePath) {
+  const abs = resolveRepoFilePath(repoRoot, filePath);
+  return fs.readFileSync(abs, 'utf8');
+}
+
+function readBinaryFromWorkingTree(repoRoot, filePath) {
+  const abs = resolveRepoFilePath(repoRoot, filePath);
+  return fs.readFileSync(abs);
+}
+
+function inferImageMime(filePath) {
+  const ext = path.extname(filePath || '').toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.bmp') return 'image/bmp';
+  if (ext === '.svg') return 'image/svg+xml';
+  return 'application/octet-stream';
+}
+
 async function buildUntrackedDiff(repoRoot) {
   const untrackedRaw = await runGit(['ls-files', '--others', '--exclude-standard', '-z'], repoRoot);
   const untrackedFiles = untrackedRaw.split('\0').filter(Boolean);
@@ -161,8 +228,7 @@ async function buildRepoDiff(repoPath, baseRef, headRef) {
     throw new Error('Repository path is required.');
   }
 
-  await runGit(['rev-parse', '--is-inside-work-tree'], repoPath);
-  const repoRoot = (await runGit(['rev-parse', '--show-toplevel'], repoPath)).trim();
+  const repoRoot = await resolveRepoRoot(repoPath);
 
   if (baseRef && headRef) {
     return runGit(['diff', '--no-color', `${baseRef}...${headRef}`], repoRoot);
@@ -184,6 +250,96 @@ async function buildRepoDiff(repoPath, baseRef, headRef) {
   return [staged, unstaged, untracked].filter(Boolean).join('\n');
 }
 
+async function buildFilePreview({
+  repoPath,
+  baseRef,
+  headRef,
+  oldPath,
+  newPath,
+  fileType,
+  diffType,
+}) {
+  const repoRoot = await resolveRepoRoot(repoPath);
+  const hasHead = await runGit(['rev-parse', '--verify', 'HEAD'], repoRoot)
+    .then(() => true)
+    .catch(() => false);
+
+  const readText = async (side) => {
+    const isLeft = side === 'left';
+    const targetPath = isLeft ? oldPath : newPath;
+    if (!targetPath) return null;
+    if (isLeft && diffType === 'added') return null;
+    if (!isLeft && diffType === 'deleted') return null;
+
+    const ref = isLeft ? baseRef : headRef;
+    if (ref && await hasRef(repoRoot, ref, targetPath)) {
+      return readTextFromRef(repoRoot, ref, targetPath);
+    }
+
+    if (!isLeft) {
+      try {
+        return readTextFromWorkingTree(repoRoot, targetPath);
+      } catch {
+        // Fall through to HEAD fallback.
+      }
+    }
+
+    if (hasHead && await hasRef(repoRoot, 'HEAD', targetPath)) {
+      return readTextFromRef(repoRoot, 'HEAD', targetPath);
+    }
+
+    return null;
+  };
+
+  const readImage = async (side) => {
+    const isLeft = side === 'left';
+    const targetPath = isLeft ? oldPath : newPath;
+    if (!targetPath) return null;
+    if (isLeft && diffType === 'added') return null;
+    if (!isLeft && diffType === 'deleted') return null;
+
+    const ref = isLeft ? baseRef : headRef;
+    let data = null;
+    if (ref && await hasRef(repoRoot, ref, targetPath)) {
+      data = await readBinaryFromRef(repoRoot, ref, targetPath);
+    } else if (!isLeft) {
+      try {
+        data = readBinaryFromWorkingTree(repoRoot, targetPath);
+      } catch {
+        // Fall through to HEAD fallback.
+      }
+    }
+
+    if (!data && hasHead && await hasRef(repoRoot, 'HEAD', targetPath)) {
+      data = await readBinaryFromRef(repoRoot, 'HEAD', targetPath);
+    }
+    if (!data) return null;
+
+    return {
+      src: `data:${inferImageMime(targetPath)};base64,${data.toString('base64')}`,
+      path: targetPath,
+    };
+  };
+
+  if (fileType === 'markdown') {
+    return {
+      kind: 'markdown',
+      left: await readText('left'),
+      right: await readText('right'),
+    };
+  }
+
+  if (fileType === 'image') {
+    return {
+      kind: 'image',
+      left: await readImage('left'),
+      right: await readImage('right'),
+    };
+  }
+
+  throw new Error(`Unsupported preview file type: ${fileType}`);
+}
+
 ipcMain.handle('repo:pick', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Select Git Repository',
@@ -197,6 +353,10 @@ ipcMain.handle('repo:pick', async () => {
 
 ipcMain.handle('repo:diff', async (_event, repoPath, baseRef, headRef) => {
   return buildRepoDiff(repoPath, baseRef, headRef);
+});
+
+ipcMain.handle('repo:preview-file', async (_event, request) => {
+  return buildFilePreview(request || {});
 });
 
 ipcMain.handle('repo:initial', async (event) => {

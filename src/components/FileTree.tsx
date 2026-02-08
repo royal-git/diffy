@@ -103,7 +103,8 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = memo(({
   if (node.isFile) {
     const isActive = node.fileIndex === activeIndex;
     const diff = node.fileDiff!;
-    const allDecided = diff.chunks.every(
+    const hasReviewableChunks = diff.chunks.length > 0;
+    const allDecided = hasReviewableChunks && diff.chunks.every(
       c => chunkDecisions[c.id] && chunkDecisions[c.id] !== 'pending'
     );
 

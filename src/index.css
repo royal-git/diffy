@@ -850,6 +850,139 @@ html, body, #root {
   color: var(--text-muted);
 }
 
+.preview-mode-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.file-preview-root {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.file-preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.file-preview-pane {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-preview-pane-header {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.file-preview-markdown {
+  padding: 12px;
+  overflow: auto;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+}
+
+.preview-md-h1,
+.preview-md-h2,
+.preview-md-h3,
+.preview-md-h4,
+.preview-md-h5,
+.preview-md-h6 {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.preview-md-h1 { font-size: 24px; }
+.preview-md-h2 { font-size: 20px; }
+.preview-md-h3 { font-size: 18px; }
+.preview-md-h4 { font-size: 16px; }
+.preview-md-h5 { font-size: 14px; }
+.preview-md-h6 { font-size: 13px; color: var(--text-secondary); }
+
+.preview-md-p {
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.preview-md-li {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+
+.preview-md-bullet {
+  color: var(--text-secondary);
+  width: 18px;
+  flex-shrink: 0;
+}
+
+.preview-md-quote {
+  border-left: 3px solid var(--border-focus);
+  color: var(--text-secondary);
+  padding-left: 10px;
+  margin-bottom: 8px;
+}
+
+.preview-md-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+  overflow: auto;
+}
+
+.preview-md-spacer {
+  height: 8px;
+}
+
+.file-preview-image-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--bg-primary);
+}
+
+.file-preview-image {
+  max-width: 100%;
+  max-height: calc(100vh - 260px);
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+}
+
+.file-preview-empty {
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.file-preview-error {
+  color: var(--red);
+  text-align: center;
+}
+
 /* Chunk indicator bar */
 .chunk-indicator-bar {
   display: flex;

@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktopBridge', {
   pickRepository: () => ipcRenderer.invoke('repo:pick'),
   getRepositoryDiff: (repoPath, baseRef, headRef) => ipcRenderer.invoke('repo:diff', repoPath, baseRef, headRef),
+  getFilePreview: request => ipcRenderer.invoke('repo:preview-file', request),
   getInitialRepository: () => ipcRenderer.invoke('repo:initial'),
   getThemePreference: () => ipcRenderer.invoke('prefs:get-theme'),
   setThemePreference: theme => ipcRenderer.invoke('prefs:set-theme', theme),

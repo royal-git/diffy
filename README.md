@@ -8,6 +8,13 @@ Open from any repo with one command and review changes in a side-by-side UI.
 
 ![Diffy UI](docs/screenshot.jpg)
 
+
+### Run without install
+
+```bash
+npx github:<owner>/<repo> --help
+```
+
 ## Highlights
 
 - Side-by-side and unified diff views
@@ -33,11 +40,6 @@ npm i -g github:<owner>/<repo>
 diffy --help
 ```
 
-### Run without install
-
-```bash
-npx github:<owner>/<repo> --help
-```
 
 ### Dev mode (clone + link)
 
@@ -86,5 +88,3 @@ diffy --pr 123
 ## Behavior Notes
 
 - `diffy` includes untracked files.
-- `diffy -b <ref>` compares branch commits (not unstaged edits).
-- `diffy --pr <number>` resolves base/head from `gh` and fetches PR refs.

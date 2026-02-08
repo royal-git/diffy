@@ -60,6 +60,7 @@ export default function App() {
     if (!activeFile) return [];
     return activeFile.chunks.map(c => c.id);
   }, [activeFile]);
+  const activeChunkCount = allChunkIds.length;
 
   // Search results count (simple: count lines matching query in active file)
   const searchResultCount = useMemo(() => {
@@ -401,32 +402,41 @@ export default function App() {
                 </button>
               </div>
             )}
-            <div className="chunk-nav">
-              <button
-                className="toolbar-btn"
-                onClick={prevChunk}
-                disabled={focusedChunkIndex === 0}
-                title="Previous change (N)"
-              >
-                &#x25B2; Prev
-              </button>
-              <span className="chunk-nav-label">
-                Change {focusedChunkIndex + 1} / {allChunkIds.length}
-              </span>
-              <button
-                className="toolbar-btn"
-                onClick={nextChunk}
-                disabled={focusedChunkIndex >= allChunkIds.length - 1}
-                title="Next change (n)"
-              >
-                Next &#x25BC;
-              </button>
-            </div>
+            {activeChunkCount > 0 ? (
+              <div className="chunk-nav">
+                <button
+                  className="toolbar-btn"
+                  onClick={prevChunk}
+                  disabled={focusedChunkIndex === 0}
+                  title="Previous change (N)"
+                >
+                  &#x25B2; Prev
+                </button>
+                <span className="chunk-nav-label">
+                  Change {focusedChunkIndex + 1} / {activeChunkCount}
+                </span>
+                <button
+                  className="toolbar-btn"
+                  onClick={nextChunk}
+                  disabled={focusedChunkIndex >= activeChunkCount - 1}
+                  title="Next change (n)"
+                >
+                  Next &#x25BC;
+                </button>
+              </div>
+            ) : (
+              <div className="chunk-nav">
+                <span className="chunk-nav-label">No text hunks</span>
+              </div>
+            )}
           </div>
 
           {activeFile && (
             <DiffViewer
               file={activeFile}
+              repoPath={currentRepoTarget?.repoPath ?? null}
+              baseRef={currentRepoTarget?.baseRef ?? null}
+              headRef={currentRepoTarget?.headRef ?? null}
               viewMode={viewMode}
               contextLines={contextLines}
               expandedRegions={expandedRegions}

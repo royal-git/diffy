@@ -71,6 +71,56 @@ describe('parseUnifiedDiff', () => {
     expect(files[0].additions).toBe(2);
     expect(files[0].deletions).toBe(0);
   });
+
+  it('keeps binary/image-only patches in file list', () => {
+    const input = [
+      'diff --git a/assets/logo.png b/assets/logo.png',
+      'index 1234567..89abcde 100644',
+      'Binary files a/assets/logo.png and b/assets/logo.png differ',
+      '',
+    ].join('\n');
+
+    const files = parseUnifiedDiff(input);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].oldPath).toBe('assets/logo.png');
+    expect(files[0].newPath).toBe('assets/logo.png');
+    expect(files[0].type).toBe('modified');
+    expect(files[0].chunks).toHaveLength(0);
+  });
+
+  it('keeps binary files when mixed with text patches', () => {
+    const input = [
+      'diff --git a/src/a.ts b/src/a.ts',
+      'index 1111111..2222222 100644',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1 +1 @@',
+      '-const foo = 1;',
+      '+const foo = 2;',
+      'diff --git a/docs/screenshot copy.jpg b/docs/screenshot copy.jpg',
+      'new file mode 100644',
+      'index 0000000..042ec99',
+      'Binary files /dev/null and b/docs/screenshot copy.jpg differ',
+      'diff --git a/src/b.ts b/src/b.ts',
+      'index 3333333..4444444 100644',
+      '--- a/src/b.ts',
+      '+++ b/src/b.ts',
+      '@@ -1 +1,2 @@',
+      ' export const x = 1;',
+      '+export const y = 2;',
+      '',
+    ].join('\n');
+
+    const files = parseUnifiedDiff(input);
+
+    expect(files).toHaveLength(3);
+    expect(files.some(f => f.newPath === 'src/a.ts')).toBe(true);
+    expect(files.some(f => f.newPath === 'src/b.ts')).toBe(true);
+    const binary = files.find(f => f.newPath === 'docs/screenshot copy.jpg');
+    expect(binary).toBeTruthy();
+    expect(binary?.chunks).toHaveLength(0);
+  });
 });
 
 describe('computeDiff', () => {

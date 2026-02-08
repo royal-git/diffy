@@ -21,6 +21,13 @@ interface ParsedFile {
   hunks?: ParsedHunk[];
 }
 
+interface GitDiffSection {
+  oldPath: string;
+  newPath: string;
+  typeHint: FileDiff['type'] | null;
+  isBinary: boolean;
+}
+
 function splitChangeLines(value: string): string[] {
   const lines = value.split('\n');
   if (value.endsWith('\n')) lines.pop();
@@ -34,15 +41,17 @@ function normalizePath(rawPath: string | undefined): string {
   return withoutTabSuffix.replace(/^[ab]\//, '');
 }
 
-function extractPathsFromHeaders(diffText: string): Array<{ oldPath: string; newPath: string }> {
+function extractGitSections(diffText: string): GitDiffSection[] {
   const sections = diffText.split(/^diff --git /m).filter(Boolean);
-  const results: Array<{ oldPath: string; newPath: string }> = [];
+  const results: GitDiffSection[] = [];
 
   for (const section of sections) {
     const lines = section.split('\n');
     const header = lines[0]?.trim() ?? '';
     let oldPath = 'file';
     let newPath = 'file';
+    let typeHint: FileDiff['type'] | null = null;
+    let isBinary = false;
 
     const gitHeader = header.match(/^a\/(.+?) b\/(.+)$/);
     if (gitHeader) {
@@ -53,16 +62,29 @@ function extractPathsFromHeaders(diffText: string): Array<{ oldPath: string; new
     for (const line of lines) {
       if (line.startsWith('rename from ')) {
         oldPath = normalizePath(line.slice('rename from '.length));
+        typeHint = 'renamed';
       } else if (line.startsWith('rename to ')) {
         newPath = normalizePath(line.slice('rename to '.length));
+        typeHint = 'renamed';
+      } else if (line.startsWith('new file mode ')) {
+        typeHint = 'added';
+      } else if (line.startsWith('deleted file mode ')) {
+        typeHint = 'deleted';
       } else if (line.startsWith('--- ')) {
         oldPath = normalizePath(line.slice(4));
       } else if (line.startsWith('+++ ')) {
         newPath = normalizePath(line.slice(4));
+      } else if (line.startsWith('Binary files ') || line.startsWith('GIT binary patch')) {
+        isBinary = true;
       }
     }
 
-    results.push({ oldPath, newPath });
+    if (oldPath === '/dev/null') typeHint = 'added';
+    else if (newPath === '/dev/null') typeHint = 'deleted';
+    else if (typeHint === null && oldPath !== newPath) typeHint = 'renamed';
+    else if (typeHint === null) typeHint = 'modified';
+
+    results.push({ oldPath, newPath, typeHint, isBinary });
   }
 
   return results;
@@ -152,11 +174,31 @@ export function computeDiff(oldText: string, newText: string, fileName?: string)
 export function parseUnifiedDiff(diffText: string): FileDiff[] {
   const files: FileDiff[] = [];
   const parsed = parsePatch(diffText) as ParsedFile[];
-  const headerPaths = extractPathsFromHeaders(diffText);
+  const sections = extractGitSections(diffText);
+  const seenKeys = new Set<string>();
+  const usedSectionIndexes = new Set<number>();
 
   for (let index = 0; index < parsed.length; index++) {
     const file = parsed[index];
-    const fallbackPaths = headerPaths[index];
+    const parsedOldPath = normalizePath(file.oldFileName);
+    const parsedNewPath = normalizePath(file.newFileName);
+
+    let fallbackIndex = -1;
+    if (parsedOldPath !== 'file' || parsedNewPath !== 'file') {
+      fallbackIndex = sections.findIndex((section, sectionIndex) =>
+        !usedSectionIndexes.has(sectionIndex) &&
+        (parsedOldPath === 'file' || section.oldPath === parsedOldPath) &&
+        (parsedNewPath === 'file' || section.newPath === parsedNewPath)
+      );
+    }
+    if (fallbackIndex === -1) {
+      fallbackIndex = sections.findIndex((_, sectionIndex) => !usedSectionIndexes.has(sectionIndex));
+    }
+    if (fallbackIndex !== -1) {
+      usedSectionIndexes.add(fallbackIndex);
+    }
+
+    const fallbackPaths = fallbackIndex !== -1 ? sections[fallbackIndex] : undefined;
     const rawOldPath = normalizePath(file.oldFileName) !== 'file'
       ? normalizePath(file.oldFileName)
       : (fallbackPaths?.oldPath ?? 'file');
@@ -237,6 +279,25 @@ export function parseUnifiedDiff(diffText: string): FileDiff[] {
       additions,
       deletions,
     });
+    seenKeys.add(`${oldPath}=>${newPath}`);
+  }
+
+  for (const section of sections) {
+    const oldPath = section.oldPath === '/dev/null' ? (section.newPath || 'file') : section.oldPath;
+    const newPath = section.newPath === '/dev/null' ? (section.oldPath || 'file') : section.newPath;
+    const key = `${oldPath}=>${newPath}`;
+    if (seenKeys.has(key)) continue;
+    if (!section.isBinary && section.typeHint !== 'renamed') continue;
+
+    files.push({
+      oldPath,
+      newPath,
+      chunks: [],
+      type: section.typeHint || 'modified',
+      additions: 0,
+      deletions: 0,
+    });
+    seenKeys.add(key);
   }
 
   if (files.length === 0 && diffText.trim().length > 0) {
